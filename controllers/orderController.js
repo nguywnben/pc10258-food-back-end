@@ -14,7 +14,8 @@ class OrderController {
                 where,
                 include: [
                     { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'image_url'] }] },
-                    { model: Address, as: 'address' }
+                    { model: Address, as: 'address' },
+                    { model: User, as: 'user', attributes: ['id', 'full_name', 'email', 'phone'] }
                 ],
                 order: [['created_at', 'DESC']]
             });
@@ -31,6 +32,7 @@ class OrderController {
             const order = await Order.findOne({
                 where: { id: req.params.id, user_id: req.user.id },
                 include: [
+                    { model: User, as: 'user', attributes: ['id', 'full_name', 'email', 'phone'] },
                     { model: OrderItem, as: 'items', include: [{ model: Product, as: 'product' }] },
                     { model: Address, as: 'address' }
                 ]
@@ -142,7 +144,7 @@ class OrderController {
         try {
             const orders = await Order.findAll({
                 include: [
-                    { model: User, as: 'user', attributes: ['id', 'full_name', 'email'] },
+                    { model: User, as: 'user', attributes: ['id', 'full_name', 'email', 'phone'] },
                     { model: OrderItem, as: 'items' },
                     { model: Address, as: 'address' }
                 ],
