@@ -344,18 +344,45 @@ class PaymentController {
                         });
                     } else if (payment.type === 'upgrade') {
                         // === UPGRADE: Update membership ===
+                        const { plan_id } = req.body;
+                        
+                        if (!plan_id) {
+                            await transaction.rollback();
+                            return res.status(400).json({
+                                success: false,
+                                error: "plan_id được yêu cầu để nâng cấp thành viên"
+                            });
+                        }
+
+                        // Get membership plan
+                        const { MembershipPlan } = require('../models');
+                        const plan = await MembershipPlan.findByPk(plan_id);
+                        
+                        if (!plan) {
+                            await transaction.rollback();
+                            return res.status(404).json({
+                                success: false,
+                                error: "Gói membership không tồn tại"
+                            });
+                        }
+
+                        // Update user membership and plan
                         await User.update(
-                            { membership: 'premium' },
+                            { 
+                                membership: 'premium',
+                                membership_plan_id: plan_id
+                            },
                             { where: { id: user_id }, transaction }
                         );
 
+                        // Log transaction in wallet if wallet exists
                         const wallet = await Wallet.findOne({ where: { user_id } });
                         if (wallet) {
                             await WalletTransaction.create({
                                 wallet_id: wallet.id,
                                 type: 'payment',
                                 amount: -payment.amount,
-                                description: 'Nâng cấp thành viên premium',
+                                description: `Nâng cấp thành viên - ${plan.name}`,
                                 reference_code: payment.reference_code
                             }, { transaction });
                         }
@@ -370,6 +397,8 @@ class PaymentController {
                                 reference_code: payment.reference_code,
                                 status: 'completed',
                                 type: 'upgrade',
+                                membership_plan_id: plan_id,
+                                plan_name: plan.name,
                                 confirmation_time: new Date()
                             }
                         });

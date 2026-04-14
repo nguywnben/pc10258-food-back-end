@@ -38,6 +38,11 @@ const User = sequelize.define('User', {
         type: DataTypes.ENUM('free', 'premium'),
         allowNull: false,
         defaultValue: 'free'
+    },
+    membership_plan_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: 'Reference to current membership plan'
     }
 }, {
     tableName: 'users',
