@@ -1,4 +1,4 @@
-const { Order, OrderItem, CartItem, Product, Address } = require('../models');
+const { Order, OrderItem, CartItem, Product, Address, User } = require('../models');
 const sequelize = require('../database');
 
 class OrderController {
@@ -142,6 +142,7 @@ class OrderController {
         try {
             const orders = await Order.findAll({
                 include: [
+                    { model: User, as: 'user', attributes: ['id', 'full_name', 'email'] },
                     { model: OrderItem, as: 'items' },
                     { model: Address, as: 'address' }
                 ],
