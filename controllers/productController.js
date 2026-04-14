@@ -6,9 +6,21 @@ class ProductController {
     // Lấy tất cả sản phẩm (có lọc, sắp xếp)
     static async get(req, res) {
         try {
-            const { category_id, sort, min_price, max_price, search } = req.query;
+            const { category_id, sort, min_price, max_price, search, is_available } = req.query;
 
-            const where = { is_available: 1 };
+            const where = {};
+            
+            // Phía Client mặc định chỉ lấy is_available: 1
+            // Phía Admin có thể truyền is_available=all để lấy tất cả
+            if (is_available === 'all') {
+                // Không thêm filter is_available để lấy tất cả
+            } else if (is_available !== undefined) {
+                where.is_available = parseInt(is_available);
+            } else {
+                // Mặc định cho client (User)
+                where.is_available = 1;
+            }
+
             if (category_id) where.category_id = category_id;
             if (min_price || max_price) {
                 where.price = {};

@@ -18,7 +18,13 @@ const Category = sequelize.define('Category', {
     sort_order: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        defaultValue: 0
+        defaultValue: 0,
+        unique: true
+    },
+    status: {
+        type: DataTypes.TINYINT(1),
+        allowNull: false,
+        defaultValue: 1
     }
 }, {
     tableName: 'categories',
