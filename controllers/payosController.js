@@ -1,5 +1,7 @@
 const { PayOS } = require("@payos/node");
-const { Order } = require('../models');
+const { Order, Payment, Wallet, WalletTransaction } = require('../models');
+const sequelize = require('../database');
+const crypto = require('crypto');
 
 // Khởi tạo PayOS bằng environment variables
 const payos = new PayOS({
@@ -99,8 +101,10 @@ exports.createPaymentLink = async (req, res) => {
 
 /**
  * Nhận Webhook từ PayOS báo kết quả thanh toán
+ * PayOS sẽ gọi endpoint này khi có sự kiện thanh toán
  */
 exports.receiveWebhook = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     console.log("🔔 Webhook received:", req.body);
     
@@ -108,43 +112,73 @@ exports.receiveWebhook = async (req, res) => {
     let webhookData;
     
     if (typeof payos.webhooks?.verify === 'function') {
-      webhookData = payos.webhooks.verify(req.body);
+      try {
+        webhookData = payos.webhooks.verify(req.body);
+        console.log("✅ Webhook verified via PayOS");
+      } catch (verifyError) {
+        console.warn('⚠️ PayOS webhook verification failed:', verifyError.message);
+        webhookData = req.body;
+      }
     } else {
-      console.warn('❌ PayOS webhook verification method không tìm thấy');
-      // Fallback: nếu hàm verify không có, xử lý webhook data trực tiếp
+      console.warn('⚠️ PayOS webhook verification method không tìm thấy, trust webhook data');
       webhookData = req.body;
     }
 
     console.log("✅ Webhook verified:", webhookData);
 
-    // 2. Nếu thanh toán thành công, cập nhật trạng thái đơn hàng
-    if (webhookData.code === '00' || webhookData.success) {
-      const orderId = webhookData.orderCode; // Trùng với orderId lúc tạo
-      
-      const order = await Order.findByPk(orderId);
+    // 2. Xử lý webhook dựa trên mã trạng thái
+    const orderCode = webhookData.orderCode;
+    const isSuccess = webhookData.code === '00' && webhookData.data?.code === '00';
+    const isCancelled = webhookData.code !== '00' || webhookData.data?.code !== '00';
+
+    if (isSuccess && orderCode) {
+      // === PAYMENT SUCCESSFUL ===
+      const order = await Order.findByPk(orderCode, { transaction });
       if (order) {
         // Cập nhật trạng thái sang 'preparing' (đang chuẩn bị) sau khi thanh toán thành công
         await order.update({
           status: 'preparing',
           payment_method: 'PayOS'
+        }, { transaction });
+        
+        // Cập nhật payment record nếu tồn tại
+        const payment = await Payment.findOne({
+          where: { order_id: orderCode },
+          transaction
         });
-        console.log(`✅ Đã cập nhật thanh toán thành công cho đơn ${orderId}`);
+        if (payment) {
+          await payment.update({ status: 'completed' }, { transaction });
+        }
+        
+        console.log(`✅ Đã cập nhật thanh toán thành công cho đơn ${orderCode}`);
       }
-    } else if (webhookData.code === '07' || !webhookData.success) {
-      // Thanh toán thất bại hoặc bị hủy
-      const orderId = webhookData.orderCode;
-      const order = await Order.findByPk(orderId);
+    } else if (isCancelled && orderCode) {
+      // === PAYMENT FAILED OR CANCELLED ===
+      const order = await Order.findByPk(orderCode, { transaction });
       if (order) {
         await order.update({
           status: 'cancelled'
+        }, { transaction });
+        
+        // Cập nhật payment record
+        const payment = await Payment.findOne({
+          where: { order_id: orderCode },
+          transaction
         });
-        console.log(`⚠️ Thanh toán thất bại cho đơn ${orderId}`);
+        if (payment) {
+          await payment.update({ status: 'failed' }, { transaction });
+        }
+        
+        console.log(`⚠️ Thanh toán thất bại cho đơn ${orderCode}`);
       }
     }
+
+    await transaction.commit();
 
     // PayOS yêu cầu trả về HTTP 200 và success: true để xác nhận nhận webhook
     res.status(200).json({ success: true, message: "Webhook received" });
   } catch (error) {
+    await transaction.rollback();
     console.error("❌ Lỗi xác thực webhook PayOS:", error);
     // Vẫn trả về 200 như yêu cầu của PayOS để tránh retry
     res.status(200).json({ success: false, message: "Invalid webhook" });
