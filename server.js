@@ -22,6 +22,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const promotionRoutes = require('./routes/promotionRoutes');
 const membershipRoutes = require('./routes/membershipRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const payosRoutes = require('./routes/payosRoutes');
 
 // Middleware
 app.use(express.json());
@@ -48,6 +49,7 @@ app.use('/api', messageRoutes);
 app.use('/api', promotionRoutes);
 app.use('/api', membershipRoutes);
 app.use('/api', paymentRoutes);
+app.use('/api', payosRoutes);
 
 // Health check
 app.get('/api', (req, res) => {
