@@ -23,6 +23,7 @@ CREATE TABLE users (
   avatar_url  VARCHAR(500)  DEFAULT NULL                    COMMENT 'URL ảnh đại diện',
   role        ENUM('client','admin') NOT NULL DEFAULT 'client' COMMENT 'Vai trò',
   membership  ENUM('free','premium') NOT NULL DEFAULT 'free'   COMMENT 'Gói thành viên',
+  membership_plan_id INT DEFAULT NULL                             COMMENT 'Gói membership đang dùng (FK membership_plans)',
   created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -361,6 +362,11 @@ INSERT INTO membership_plans (id, name, price, features, is_popular) VALUES
 (1, 'Miễn phí',          0,     '["Giao hàng theo thời gian dự kiến","Xem danh mục và đặt món","Không có mã giảm thêm"]',                     0),
 (2, 'Thành viên Cần Thơ', 49000, '["Tặng mã giảm giá khi nâng cấp","Ưu tiên một số ưu đãi khu vực","Xem nhanh các món gợi ý"]', 1),
 (3, 'VIP',               99000, '["Miễn phí giao hàng mọi đơn","Giảm 10% toàn menu","Hỗ trợ ưu tiên 24/7"]',                                0);
+
+-- Khóa ngoại users.membership_plan_id → membership_plans (chạy sau khi đã tạo bảng membership_plans)
+ALTER TABLE users
+  ADD CONSTRAINT fk_users_membership_plan
+  FOREIGN KEY (membership_plan_id) REFERENCES membership_plans(id) ON DELETE SET NULL;
 
 
 -- ============================================================
