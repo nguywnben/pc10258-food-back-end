@@ -83,6 +83,9 @@ Payment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 // Payment ↔ Order
 Payment.belongsTo(Order, { foreignKey: 'order_id', as: 'order' });
 
+// User ↔ MembershipPlan (for tracking current membership)
+User.belongsTo(MembershipPlan, { foreignKey: 'membership_plan_id', as: 'currentMembership' });
+
 module.exports = {
     sequelize,
     User,

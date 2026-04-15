@@ -6,6 +6,9 @@ const MembershipController = require('../controllers/membershipController');
 // Public - xem gói
 router.get('/membership-plans', MembershipController.getPlans);
 
+// Client - lấy membership hiện tại
+router.get('/membership/current', checkJWT, MembershipController.getCurrent);
+
 // Client - nâng cấp
 router.post('/membership/upgrade', checkJWT, MembershipController.upgrade);
 
