@@ -33,6 +33,14 @@ const Payment = sequelize.define('Payment', {
         allowNull: false,
         defaultValue: 'pending'
     },
+    checkout_url: {
+        type: DataTypes.STRING(500),
+        allowNull: true
+    },
+    expires_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
     order_id: {
         type: DataTypes.INTEGER,
         allowNull: true

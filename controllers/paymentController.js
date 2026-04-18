@@ -1,6 +1,7 @@
 const { Payment, Order, Wallet, WalletTransaction, User } = require('../models');
 const { PayOS } = require('@payos/node');
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const sequelize = require('../database');
 
 // Initialize PayOS
@@ -145,7 +146,7 @@ class PaymentController {
                     amount: parseInt(amount),
                     description: finalDescription,
                     returnUrl: return_url || `${process.env.FRONTEND_PAYMENT_CALLBACK_URL || 'http://localhost:4200/payment/callback'}?payment_id=${payment.id}`,
-                    cancelUrl: return_url || `${process.env.FRONTEND_PAYMENT_CALLBACK_URL || 'http://localhost:4200/payment/callback'}?payment_id=${payment.id}`,
+                    cancelUrl: cancel_url || `${process.env.FRONTEND_PAYMENT_CALLBACK_URL || 'http://localhost:4200/payment/callback'}?payment_id=${payment.id}`,
                     buyerName: req.user.full_name || 'Customer',
                     buyerEmail: req.user.email || '',
                     buyerPhone: req.user.phone || '',
@@ -160,6 +161,31 @@ class PaymentController {
                     throw new Error('PayOS did not return checkoutUrl');
                 }
 
+                // Persist checkout_url & expires_at so we can resume the session
+                // when the user closes the PayOS tab without cancelling.
+                const expiresAt = new Date(paymentData.expiredAt * 1000);
+                await payment.update({
+                    checkout_url: paymentLinkRes.checkoutUrl,
+                    expires_at: expiresAt
+                }, { transaction });
+
+                // For order payments, mark older pending payments of this order as superseded
+                // so /active-payment returns only the latest link.
+                if (type === 'order' && order_id) {
+                    await Payment.update(
+                        { status: 'cancelled' },
+                        {
+                            where: {
+                                order_id,
+                                user_id,
+                                status: 'pending',
+                                id: { [Op.ne]: payment.id }
+                            },
+                            transaction
+                        }
+                    );
+                }
+
                 await transaction.commit();
 
                 res.status(201).json({
@@ -171,7 +197,7 @@ class PaymentController {
                         type: payment.type,
                         status: payment.status,
                         checkout_url: paymentLinkRes.checkoutUrl,
-                        expired_at: new Date(paymentData.expiredAt * 1000)
+                        expired_at: expiresAt
                     }
                 });
             } catch (payosError) {
@@ -404,16 +430,28 @@ class PaymentController {
                         });
                     }
                 } else if (isCancelled) {
-                    // === PAYMENT FAILED ===
-                    await payment.update({ status: 'failed' }, { transaction });
+                    // === PAYMENT CANCELLED ===
+                    await payment.update({ status: 'cancelled' }, { transaction });
+
+                    // Auto-cancel the related order so the user doesn't see a
+                    // dangling "Thanh toán" button for an order they've abandoned.
+                    let orderCancelled = false;
+                    if (payment.type === 'order' && payment.order && payment.order.status === 'pending') {
+                        await payment.order.update({ status: 'cancelled' }, { transaction });
+                        orderCancelled = true;
+                    }
+
                     await transaction.commit();
 
                     return res.status(200).json({
                         success: true,
-                        message: "Thanh toán bị hủy",
+                        message: orderCancelled
+                            ? "Thanh toán bị hủy, đơn hàng đã được tự động hủy"
+                            : "Thanh toán bị hủy",
                         data: {
                             payment_id: payment.id,
-                            status: 'failed'
+                            status: 'cancelled',
+                            order_cancelled: orderCancelled
                         }
                     });
                 }
@@ -428,6 +466,72 @@ class PaymentController {
         } catch (error) {
             await transaction.rollback();
             console.error('❌ Confirm payment error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+
+    // GET /api/payments/active/order/:orderId - Lấy link PayOS đang mở của đơn
+    // Dùng khi user bấm "Thanh toán" ở trang orders để biết có nên mở thẳng
+    // PayOS hay đưa về trang /payment.
+    static async getActiveForOrder(req, res) {
+        try {
+            const orderId = parseInt(req.params.orderId, 10);
+            const user_id = req.user.id;
+
+            if (!orderId) {
+                return res.status(400).json({ success: false, error: "orderId không hợp lệ" });
+            }
+
+            const order = await Order.findOne({ where: { id: orderId, user_id } });
+            if (!order) {
+                return res.status(404).json({ success: false, error: "Đơn hàng không tồn tại" });
+            }
+
+            if (order.status !== 'pending') {
+                return res.status(200).json({
+                    status: 200,
+                    data: { active: false, reason: 'order_not_pending' }
+                });
+            }
+
+            const payment = await Payment.findOne({
+                where: {
+                    user_id,
+                    order_id: orderId,
+                    status: 'pending',
+                    type: 'order'
+                },
+                order: [['created_at', 'DESC']]
+            });
+
+            if (!payment || !payment.checkout_url) {
+                return res.status(200).json({
+                    status: 200,
+                    data: { active: false, reason: 'no_payment' }
+                });
+            }
+
+            if (payment.expires_at && new Date(payment.expires_at).getTime() <= Date.now()) {
+                // PayOS link đã hết hạn -> đánh dấu cancelled để lần sau có thể tạo link mới sạch sẽ
+                await payment.update({ status: 'cancelled' });
+                return res.status(200).json({
+                    status: 200,
+                    data: { active: false, reason: 'expired' }
+                });
+            }
+
+            return res.status(200).json({
+                status: 200,
+                data: {
+                    active: true,
+                    payment_id: payment.id,
+                    reference_code: payment.reference_code,
+                    checkout_url: payment.checkout_url,
+                    expires_at: payment.expires_at
+                }
+            });
+        } catch (error) {
+            console.error('❌ getActiveForOrder error:', error);
             res.status(500).json({ success: false, error: error.message });
         }
     }
