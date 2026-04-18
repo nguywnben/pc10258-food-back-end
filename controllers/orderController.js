@@ -70,7 +70,47 @@ class OrderController {
                 subtotal += item.product.price * item.quantity;
             });
 
-            const discount = 0; // TODO: áp dụng promo_code
+            let discount = 0;
+            if (promo_code) {
+                const { Promotion } = require('../models');
+                const { Op } = require('sequelize');
+                const promo = await Promotion.findOne({
+                    where: {
+                        code: promo_code,
+                        start_date: { [Op.lte]: new Date() },
+                        end_date: { [Op.gte]: new Date() }
+                    },
+                    transaction: t
+                });
+                
+                if (!promo) {
+                    await t.rollback();
+                    return res.status(404).json({ message: "Mã giảm giá không hợp lệ hoặc đã hết hạn" });
+                }
+                
+                if (promo.max_uses && promo.used_count >= promo.max_uses) {
+                    await t.rollback();
+                    return res.status(400).json({ message: "Mã giảm giá đã hết lượt sử dụng" });
+                }
+                
+                if (subtotal < promo.min_order) {
+                    await t.rollback();
+                    return res.status(400).json({ message: `Đơn hàng tối thiểu ${promo.min_order.toLocaleString()}₫ để áp dụng mã này` });
+                }
+                
+                if (promo.discount_type === 'fixed') {
+                    discount = promo.discount_value;
+                } else {
+                    discount = Math.floor(subtotal * promo.discount_value / 100);
+                }
+                
+                if (discount > subtotal) discount = subtotal;
+
+                // Tăng used_count
+                promo.used_count += 1;
+                await promo.save({ transaction: t });
+            }
+
             const delivery_fee = subtotal >= 100000 ? 0 : 15000;
             const total = subtotal - discount + delivery_fee;
 
