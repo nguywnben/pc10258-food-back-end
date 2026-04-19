@@ -111,7 +111,7 @@ class OrderController {
                 await promo.save({ transaction: t });
             }
 
-            const delivery_fee = subtotal >= 100000 ? 0 : 15000;
+            const delivery_fee = 0;
             const total = subtotal - discount + delivery_fee;
 
             // Tạo mã đơn
