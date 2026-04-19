@@ -5,7 +5,10 @@ class MessageController {
     // Lấy danh sách hội thoại
     static async getConversations(req, res) {
         try {
-            const conversations = await Conversation.findAll({
+            console.log('--- GET CONVERSATIONS ---');
+            console.log('User ID:', req.user.id);
+            
+            let conversations = await Conversation.findAll({
                 where: { user_id: req.user.id },
                 include: [{
                     model: Message,
@@ -16,8 +19,46 @@ class MessageController {
                 }],
                 order: [['updated_at', 'DESC']]
             });
+
+            console.log('Found conversations count:', conversations.length);
+
+            // Nếu không có hội thoại support nào, tự động tạo mới
+            const supportConv = conversations.find(c => c.type === 'support');
+            if (!supportConv) {
+                console.log('No support conversation found. Creating one...');
+                const newSupport = await Conversation.create({
+                    user_id: req.user.id,
+                    title: 'Hỗ trợ PC10258',
+                    type: 'support',
+                    avatar_text: 'CS'
+                });
+
+                console.log('Support conversation created ID:', newSupport.id);
+
+                // Add a welcome message
+                await Message.create({
+                    conversation_id: newSupport.id,
+                    sender_type: 'agent',
+                    content: 'Chào mừng bạn đến với kênh hỗ trợ! Chúng tôi có thể giúp gì cho bạn?'
+                });
+
+                // Refetch all conversations to return the updated list
+                conversations = await Conversation.findAll({
+                    where: { user_id: req.user.id },
+                    include: [{
+                        model: Message,
+                        as: 'messages',
+                        limit: 1,
+                        order: [['created_at', 'DESC']],
+                        attributes: ['content', 'sender_type', 'created_at']
+                    }],
+                    order: [['updated_at', 'DESC']]
+                });
+                console.log('Refetched conversations count:', conversations.length);
+            }
             res.status(200).json({ status: 200, data: conversations });
         } catch (error) {
+            console.error('ERROR in getConversations:', error);
             res.status(500).json({ error: error.message });
         }
     }
