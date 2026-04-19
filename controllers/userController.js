@@ -48,17 +48,27 @@ class UserController {
                 { expiresIn: "24h" }
             );
 
+            const userWithMembership = await User.findByPk(user.id, {
+                attributes: { exclude: ['password'] },
+                include: [{
+                    model: require('../models').MembershipPlan,
+                    as: 'currentMembership',
+                    attributes: ['id', 'name', 'price']
+                }]
+            });
+
             return res.status(200).json({
                 message: "Đăng nhập thành công!",
                 token,
                 user: {
-                    id: user.id,
-                    full_name: user.full_name,
-                    email: user.email,
-                    phone: user.phone,
-                    avatar_url: user.avatar_url,
-                    role: user.role,
-                    membership: user.membership
+                    id: userWithMembership.id,
+                    full_name: userWithMembership.full_name,
+                    email: userWithMembership.email,
+                    phone: userWithMembership.phone,
+                    avatar_url: userWithMembership.avatar_url,
+                    role: userWithMembership.role,
+                    membership: userWithMembership.membership,
+                    membership_plan: userWithMembership.currentMembership
                 }
             });
         } catch (error) {
@@ -70,12 +80,20 @@ class UserController {
     static async getProfile(req, res) {
         try {
             const user = await User.findByPk(req.user.id, {
-                attributes: { exclude: ['password'] }
+                attributes: { exclude: ['password'] },
+                include: [{
+                    model: require('../models').MembershipPlan,
+                    as: 'currentMembership',
+                    attributes: ['id', 'name', 'price']
+                }]
             });
             if (!user) {
                 return res.status(404).json({ message: "Không tìm thấy người dùng!" });
             }
-            res.status(200).json({ data: user });
+            const userData = user.toJSON();
+            userData.membership_plan = userData.currentMembership;
+            delete userData.currentMembership;
+            res.status(200).json({ data: userData });
         } catch (error) {
             res.status(500).json({ message: "Lỗi server", error: error.message });
         }
@@ -95,9 +113,22 @@ class UserController {
             if (phone) user.phone = phone;
             await user.save();
 
+            const userWithMembership = await User.findByPk(user.id, {
+                attributes: { exclude: ['password'] },
+                include: [{
+                    model: require('../models').MembershipPlan,
+                    as: 'currentMembership',
+                    attributes: ['id', 'name', 'price']
+                }]
+            });
+
+            const userData = userWithMembership.toJSON();
+            userData.membership_plan = userData.currentMembership;
+            delete userData.currentMembership;
+
             res.status(200).json({
                 message: "Cập nhật thành công!",
-                user: { id: user.id, full_name: user.full_name, email: user.email, phone: user.phone }
+                user: userData
             });
         } catch (error) {
             res.status(500).json({ message: "Lỗi server", error: error.message });
