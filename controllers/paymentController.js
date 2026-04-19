@@ -242,10 +242,15 @@ class PaymentController {
                 // Already processed - return success for idempotency
                 return res.status(200).json({
                     success: true,
+                    status: 200,
                     message: "Giao dịch đã được xác nhận trước đó",
                     data: {
                         payment_id: payment.id,
-                        status: payment.status
+                        reference_code: payment.reference_code,
+                        status: payment.status,
+                        type: payment.type,
+                        amount: payment.amount,
+                        order_id: payment.order_id
                     }
                 });
             }
