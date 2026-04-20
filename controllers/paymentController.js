@@ -221,7 +221,11 @@ class PaymentController {
         const transaction = await sequelize.transaction();
         try {
             const payment_id = req.params.id;
-            const { payment_id: payosPaymentId, status } = req.query;
+            // Accept PayOS return-url hints from either query or body so that the
+            // frontend can forward them after being redirected back from PayOS.
+            const urlStatus = (req.body?.status || req.query?.status || '').toString().toUpperCase();
+            const urlCancel = (req.body?.cancel ?? req.query?.cancel);
+            const isCancelHint = urlCancel === true || urlCancel === 'true';
             const user_id = req.user.id;
 
             // === GET PAYMENT RECORD ===
@@ -231,9 +235,10 @@ class PaymentController {
             });
 
             if (!payment) {
-                return res.status(404).json({ 
-                    success: false, 
-                    error: "Giao dịch không tồn tại" 
+                return res.status(404).json({
+                    success: false,
+                    error: "Giao dịch không tồn tại",
+                    message: "Giao dịch không tồn tại"
                 });
             }
 
@@ -255,19 +260,55 @@ class PaymentController {
                 });
             }
 
-            // === VERIFY WITH PAYOS ===
+            // === VERIFY WITH PAYOS (with retry for race with PayOS backend) ===
             try {
-                const paymentInfo = await payos.paymentRequests.get(parseInt(payment.id));
-                console.log('✅ PayOS verify response:', paymentInfo);
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                let paymentInfo = null;
+                let lastError = null;
+                // PayOS đôi khi trả PROCESSING trong 1-2 giây đầu sau khi user
+                // được redirect về. Retry tối đa ~4s để chắc chắn trạng thái cuối.
+                const maxAttempts = 4;
+                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                    try {
+                        paymentInfo = await payos.paymentRequests.get(parseInt(payment.id));
+                        console.log(`✅ PayOS verify response (attempt ${attempt}):`, paymentInfo?.status);
+                        if (paymentInfo && (paymentInfo.status === 'PAID' || paymentInfo.status === 'CANCELLED')) {
+                            break;
+                        }
+                    } catch (sdkErr) {
+                        lastError = sdkErr;
+                        console.warn(`⚠️ PayOS get attempt ${attempt} failed:`, sdkErr?.message || sdkErr);
+                    }
+                    if (attempt < maxAttempts) await sleep(800 * attempt);
+                }
 
-                // Check if verification successful - PayOS returns status: 'PAID' or 'PENDING'
-                const isSuccessful = paymentInfo && paymentInfo.status === 'PAID';
-                const isCancelled = paymentInfo && paymentInfo.status === 'CANCELLED';
+                // Check if verification successful - PayOS returns status: 'PAID' | 'CANCELLED' | 'PROCESSING' | 'PENDING' | ...
+                let isSuccessful = paymentInfo && paymentInfo.status === 'PAID';
+                let isCancelled = paymentInfo && paymentInfo.status === 'CANCELLED';
+
+                // Fallback: nếu PayOS SDK không trả được kết quả cuối cùng
+                // (mạng lỗi / PROCESSING kéo dài) nhưng PayOS đã redirect user
+                // kèm theo status rõ ràng trên URL thì tin theo URL đó.
+                if (!isSuccessful && !isCancelled) {
+                    if (urlStatus === 'PAID' && !isCancelHint) {
+                        console.warn('⚠️ Dùng status=PAID từ return URL vì PayOS SDK chưa xác nhận.');
+                        isSuccessful = true;
+                    } else if (urlStatus === 'CANCELLED' || isCancelHint) {
+                        console.warn('⚠️ Dùng status=CANCELLED từ return URL vì PayOS SDK chưa xác nhận.');
+                        isCancelled = true;
+                    }
+                }
 
                 if (!isSuccessful && !isCancelled) {
+                    const payosStatus = paymentInfo?.status || 'UNKNOWN';
+                    const errMsg = lastError
+                        ? `Không kết nối được PayOS: ${lastError.message || lastError}`
+                        : `Xác minh thanh toán thất bại. Trạng thái PayOS: ${payosStatus}`;
                     return res.status(400).json({
                         success: false,
-                        error: "Xác minh thanh toán thất bại. Trạng thái: " + (paymentInfo?.status || 'UNKNOWN')
+                        error: errMsg,
+                        message: errMsg,
+                        data: { payos_status: payosStatus }
                     });
                 }
 
@@ -317,45 +358,13 @@ class PaymentController {
                             }
                         });
                     } else if (payment.type === 'order') {
-                        // === ORDER: Deduct from wallet ===
-                        const wallet = await Wallet.findOne({ where: { user_id } });
-
-                        if (!wallet) {
-                            await transaction.rollback();
-                            return res.status(400).json({
-                                success: false,
-                                error: "Ví không tồn tại"
-                            });
-                        }
-
-                        if (wallet.balance < payment.amount) {
-                            await transaction.rollback();
-                            return res.status(400).json({
-                                success: false,
-                                error: "Số dư ví không đủ"
-                            });
-                        }
-
-                        // Deduct balance
-                        await wallet.decrement('balance', { 
-                            by: payment.amount,
-                            transaction 
-                        });
-
-                        // Create transaction record
-                        await WalletTransaction.create({
-                            wallet_id: wallet.id,
-                            type: 'payment',
-                            amount: -payment.amount,
-                            description: `Thanh toán đơn #${payment.order?.order_code || payment.order_id}`,
-                            reference_code: payment.order_id
-                        }, { transaction });
-
-                        // Update order status
+                        // === ORDER paid via PayOS ===
+                        // Tiền đã được khách chuyển vào PayOS, KHÔNG trừ ví.
+                        // Chỉ cần cập nhật đơn sang trạng thái đã thanh toán.
                         if (payment.order) {
                             await payment.order.update({
                                 status: 'preparing',
-                                payment_method: 'Ví PC10258'
+                                payment_method: 'PayOS'
                             }, { transaction });
                         }
 
@@ -363,13 +372,14 @@ class PaymentController {
 
                         return res.status(200).json({
                             success: true,
+                            status: 200,
                             message: "Thanh toán đơn hàng thành công!",
                             data: {
                                 payment_id: payment.id,
                                 reference_code: payment.reference_code,
                                 status: 'completed',
                                 type: 'order',
-                                wallet_balance: wallet.balance,
+                                order_id: payment.order_id,
                                 confirmation_time: new Date()
                             }
                         });
@@ -463,15 +473,21 @@ class PaymentController {
             } catch (payosError) {
                 console.error('❌ PayOS verification error:', payosError);
                 await transaction.rollback();
+                const errMsg = payosError.message || 'Xác minh thanh toán thất bại';
                 return res.status(400).json({
                     success: false,
-                    error: payosError.message || 'Xác minh thanh toán thất bại'
+                    error: errMsg,
+                    message: errMsg
                 });
             }
         } catch (error) {
             await transaction.rollback();
             console.error('❌ Confirm payment error:', error);
-            res.status(500).json({ success: false, error: error.message });
+            res.status(500).json({
+                success: false,
+                error: error.message,
+                message: error.message
+            });
         }
     }
 
