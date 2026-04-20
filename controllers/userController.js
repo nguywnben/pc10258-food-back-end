@@ -181,6 +181,43 @@ class UserController {
             res.status(500).json({ error: error.message });
         }
     }
+
+    // [Admin] Khóa/Mở khóa user
+    static async lockUser(req, res) {
+        try {
+            const { id } = req.params;
+            const { is_locked } = req.body;
+
+            if (typeof is_locked !== 'boolean') {
+                return res.status(400).json({ message: "Trường is_locked phải là boolean (true/false)!" });
+            }
+
+            const user = await User.findByPk(id);
+            if (!user) {
+                return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+            }
+
+            // Không cho khóa admin
+            if (user.role === 'admin') {
+                return res.status(403).json({ message: "Không thể khóa tài khoản admin!" });
+            }
+
+            user.is_locked = is_locked;
+            await user.save();
+
+            const userData = await User.findByPk(id, {
+                attributes: { exclude: ['password'] }
+            });
+
+            const action = is_locked ? 'khóa' : 'mở khóa';
+            res.status(200).json({
+                message: `${action.charAt(0).toUpperCase() + action.slice(1)} tài khoản thành công!`,
+                user: userData
+            });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
 }
 
 module.exports = UserController;

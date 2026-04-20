@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Máy chủ: localhost
--- Thời gian đã tạo: Th4 19, 2026 lúc 02:19 PM
+-- Thời gian đã tạo: Th4 20, 2026 lúc 04:58 AM
 -- Phiên bản máy phục vụ: 8.0.44
 -- Phiên bản PHP: 8.2.30
 
@@ -129,7 +129,7 @@ INSERT INTO `conversations` (`id`, `user_id`, `title`, `type`, `avatar_text`, `i
 (1, 1, 'Hỗ trợ PC10258', 'support', 'CS', 1, '2026-04-09 19:31:48', '2026-04-09 19:31:48'),
 (2, 1, 'Shipper Minh', 'shipper', NULL, 1, '2026-04-09 19:31:48', '2026-04-09 19:31:48'),
 (3, 1, 'Khuyến mãi', 'promotion', NULL, 1, '2026-04-09 19:31:48', '2026-04-09 19:31:48'),
-(4, 5, 'Hỗ trợ PC10258', 'support', 'CS', 1, '2026-04-19 13:03:24', '2026-04-19 14:18:20');
+(4, 5, 'Hỗ trợ PC10258', 'support', 'CS', 1, '2026-04-19 13:03:24', '2026-04-19 15:11:14');
 
 -- --------------------------------------------------------
 
@@ -208,7 +208,8 @@ INSERT INTO `messages` (`id`, `conversation_id`, `sender_id`, `sender_type`, `co
 (7, 4, 5, 'user', 'ss', '2026-04-19 13:19:56'),
 (8, 4, 5, 'user', 'awdawd', '2026-04-19 14:18:17'),
 (9, 4, 5, 'user', 'add', '2026-04-19 14:18:19'),
-(10, 4, 5, 'user', 'ada', '2026-04-19 14:18:20');
+(10, 4, 5, 'user', 'ada', '2026-04-19 14:18:20'),
+(11, 4, 5, 'agent', 'ưdw', '2026-04-19 15:11:14');
 
 -- --------------------------------------------------------
 
@@ -436,6 +437,7 @@ CREATE TABLE `users` (
   `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Mật khẩu đã hash',
   `avatar_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'URL ảnh đại diện',
   `role` enum('client','admin') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'client' COMMENT 'Vai trò',
+  `is_locked` tinyint(1) NOT NULL DEFAULT '0',
   `membership` enum('free','premium') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'free' COMMENT 'Gói thành viên',
   `membership_plan_id` int DEFAULT NULL COMMENT 'Gói membership đang dùng',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -446,12 +448,12 @@ CREATE TABLE `users` (
 -- Đang đổ dữ liệu cho bảng `users`
 --
 
-INSERT INTO `users` (`id`, `full_name`, `email`, `phone`, `password`, `avatar_url`, `role`, `membership`, `membership_plan_id`, `created_at`, `updated_at`) VALUES
-(1, 'Nguyễn Văn A', 'khach@example.com', '0901234567', '$2b$10$abcdefghijklmnopqrstuv', 'assets/images/user_avatar.png', 'client', 'free', NULL, '2026-04-09 19:31:47', '2026-04-09 19:31:47'),
-(2, 'Trần Thị B', 'tranthib@example.com', '0912345678', '$2b$10$abcdefghijklmnopqrstuv', NULL, 'client', 'premium', NULL, '2026-04-09 19:31:47', '2026-04-09 19:31:47'),
-(3, 'Admin PC10258', 'admin@pc10258food.vn', '1900001234', '$2b$10$abcdefghijklmnopqrstuv', NULL, 'admin', 'free', NULL, '2026-04-09 19:31:47', '2026-04-09 19:31:47'),
-(4, 'Nguyễn Văn Tests', 'test@example.com', '0988777666', '$2b$10$PiDvBdt5ETO3UBrsR9Eh0.D6BkSJUO8dct/aFiSPNg1eKCkYvIwm6', NULL, 'admin', 'premium', 2, '2026-04-09 13:12:18', '2026-04-15 11:43:03'),
-(5, 'NGUYEN CONG BEN', 'nben940665@gmail.com', '222222222', '$2b$10$AFc2BZ2k3LNUXSixCC1omee2SNZwdEz35svy4jls0ChUYLcYqugzu', NULL, 'admin', 'free', 1, '2026-04-14 04:17:08', '2026-04-19 20:49:19');
+INSERT INTO `users` (`id`, `full_name`, `email`, `phone`, `password`, `avatar_url`, `role`, `is_locked`, `membership`, `membership_plan_id`, `created_at`, `updated_at`) VALUES
+(1, 'Nguyễn Văn A', 'khach@example.com', '0901234567', '$2b$10$abcdefghijklmnopqrstuv', 'assets/images/user_avatar.png', 'client', 1, 'free', 1, '2026-04-09 19:31:47', '2026-04-20 04:47:52'),
+(2, 'Trần Thị B', 'tranthib@example.com', '0912345678', '$2b$10$abcdefghijklmnopqrstuv', NULL, 'client', 1, 'premium', 1, '2026-04-09 19:31:47', '2026-04-20 04:45:40'),
+(3, 'Admin PC10258', 'admin@pc10258food.vn', '1900001234', '$2b$10$abcdefghijklmnopqrstuv', NULL, 'admin', 0, 'free', 1, '2026-04-09 19:31:47', '2026-04-20 11:40:05'),
+(4, 'Nguyễn Văn Tests', 'test@example.com', '0988777666', '$2b$10$PiDvBdt5ETO3UBrsR9Eh0.D6BkSJUO8dct/aFiSPNg1eKCkYvIwm6', NULL, 'admin', 0, 'premium', 2, '2026-04-09 13:12:18', '2026-04-15 11:43:03'),
+(5, 'NGUYEN CONG BEN', 'nben940665@gmail.com', '222222222', '$2b$10$AFc2BZ2k3LNUXSixCC1omee2SNZwdEz35svy4jls0ChUYLcYqugzu', NULL, 'admin', 0, 'free', 1, '2026-04-14 04:17:08', '2026-04-19 20:49:19');
 
 -- --------------------------------------------------------
 
@@ -668,7 +670,7 @@ ALTER TABLE `membership_plans`
 -- AUTO_INCREMENT cho bảng `messages`
 --
 ALTER TABLE `messages`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT cho bảng `orders`

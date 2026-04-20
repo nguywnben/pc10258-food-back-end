@@ -34,6 +34,12 @@ const User = sequelize.define('User', {
         allowNull: false,
         defaultValue: 'client'
     },
+    is_locked: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: 'Trạng thái khóa tài khoản'
+    },
     membership: {
         type: DataTypes.ENUM('free', 'premium'),
         allowNull: false,
