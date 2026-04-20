@@ -16,5 +16,6 @@ router.put('/change-password', checkJWT, UserController.changePassword);
 // Admin
 router.get('/', checkJWT, isAdmin, UserController.getAll);
 router.delete('/:id', checkJWT, isAdmin, UserController.delete);
+router.put('/:id/lock', checkJWT, isAdmin, UserController.lockUser);
 
 module.exports = router;
